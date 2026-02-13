@@ -87,3 +87,9 @@ In `build\` folder:
 - Install MinGW (GCC for Windows).
 - Add MinGW `bin` folder to Windows `PATH`.
 - Re-run `Build-App-OneClick.bat`.
+
+## Conflict-safe entry files
+
+If your branch still references old root file paths (`main.c`, `billing.c`, `billing.h`),
+these are now compatibility shims that point to canonical files in `app/src` and `app/include`.
+Use the `app/` paths as source of truth.
