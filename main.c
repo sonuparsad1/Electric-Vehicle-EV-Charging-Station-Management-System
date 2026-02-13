@@ -1,8 +1,5 @@
-#include <windows.h>
-#include "gui.h"
-
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-    (void)hPrevInstance;
-    (void)lpCmdLine;
-    return gui_run(hInstance, nCmdShow);
-}
+/*
+ * Compatibility shim.
+ * Canonical source is app/src/main.c.
+ */
+#include "app/src/main.c"
