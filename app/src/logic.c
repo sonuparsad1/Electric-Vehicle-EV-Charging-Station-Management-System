@@ -62,15 +62,24 @@ static void assign_slots(SystemState *state, LogicEvents *events) {
     int i;
     for (i = 0; i < SLOT_COUNT; i++) {
         if (state->slots[i].status == SLOT_AVAILABLE && state->queue.count > 0) {
-            char msg[160];
+            char msg[180];
             queue_pop(&state->queue, &state->slots[i].vehicle);
             state->slots[i].status = SLOT_CHARGING;
             state->slots[i].progress = 0;
             state->slots[i].energy_kwh = 0.0;
-            state->slots[i].target_energy_kwh = 20.0 + (rand() % 41);
-            snprintf(msg, sizeof(msg), "Vehicle %s assigned to Slot %d.",
+            state->slots[i].target_energy_kwh = state->slots[i].vehicle.requested_energy_kwh;
+            if (state->slots[i].target_energy_kwh <= 0.0) {
+                state->slots[i].target_energy_kwh = 10.0;
+            }
+
+            snprintf(msg,
+                     sizeof(msg),
+                     "Vehicle %s assigned to Slot %d (Battery %d%% -> %d%%, %.2f kWh).",
                      state->slots[i].vehicle.vehicle_id,
-                     state->slots[i].slot_id);
+                     state->slots[i].slot_id,
+                     state->slots[i].vehicle.battery_start_pct,
+                     state->slots[i].vehicle.battery_target_pct,
+                     state->slots[i].target_energy_kwh);
             add_event(events, msg);
         }
     }
@@ -115,8 +124,13 @@ int logic_register_vehicle(SystemState *state, const char *owner, const char *ve
         return 0;
     }
 
-    strncpy(state->vehicles[state->vehicle_count].owner, owner, sizeof(state->vehicles[state->vehicle_count].owner) - 1);
-    strncpy(state->vehicles[state->vehicle_count].vehicle_id, vehicle_id, sizeof(state->vehicles[state->vehicle_count].vehicle_id) - 1);
+    memset(&state->vehicles[state->vehicle_count], 0, sizeof(Vehicle));
+    strncpy(state->vehicles[state->vehicle_count].owner,
+            owner,
+            sizeof(state->vehicles[state->vehicle_count].owner) - 1);
+    strncpy(state->vehicles[state->vehicle_count].vehicle_id,
+            vehicle_id,
+            sizeof(state->vehicles[state->vehicle_count].vehicle_id) - 1);
 
     if (!storage_append_vehicle(VEHICLES_FILE, &state->vehicles[state->vehicle_count])) {
         snprintf(err, err_len, "Failed to write vehicle file.");
@@ -127,8 +141,15 @@ int logic_register_vehicle(SystemState *state, const char *owner, const char *ve
     return 1;
 }
 
-int logic_enqueue_vehicle(SystemState *state, const char *vehicle_id, char *err, int err_len) {
+int logic_enqueue_vehicle(SystemState *state,
+                         const char *vehicle_id,
+                         int battery_start_pct,
+                         int battery_target_pct,
+                         double battery_capacity_kwh,
+                         char *err,
+                         int err_len) {
     Vehicle *v = find_vehicle(state, vehicle_id);
+    Vehicle queued;
     LogicEvents events = {0};
 
     if (!v) {
@@ -136,7 +157,28 @@ int logic_enqueue_vehicle(SystemState *state, const char *vehicle_id, char *err,
         return 0;
     }
 
-    if (!queue_push(&state->queue, v)) {
+    if (battery_start_pct < 0 || battery_start_pct > 100 || battery_target_pct < 1 || battery_target_pct > 100) {
+        snprintf(err, err_len, "Battery percentages must be in 0-100 range.");
+        return 0;
+    }
+
+    if (battery_start_pct >= battery_target_pct) {
+        snprintf(err, err_len, "Target battery %% must be greater than current battery %%.");
+        return 0;
+    }
+
+    if (battery_capacity_kwh < 10.0 || battery_capacity_kwh > 200.0) {
+        snprintf(err, err_len, "Battery capacity must be between 10 and 200 kWh.");
+        return 0;
+    }
+
+    queued = *v;
+    queued.battery_start_pct = battery_start_pct;
+    queued.battery_target_pct = battery_target_pct;
+    queued.battery_capacity_kwh = battery_capacity_kwh;
+    queued.requested_energy_kwh = logic_calculate_energy_request(battery_start_pct, battery_target_pct, battery_capacity_kwh);
+
+    if (!queue_push(&state->queue, &queued)) {
         snprintf(err, err_len, "Queue is full.");
         return 0;
     }
@@ -154,7 +196,7 @@ void logic_tick(SystemState *state, LogicEvents *events) {
     for (i = 0; i < SLOT_COUNT; i++) {
         if (state->slots[i].status == SLOT_CHARGING) {
             SessionRecord rec;
-            char msg[160];
+            char msg[180];
 
             state->slots[i].progress += 10;
             if (state->slots[i].progress > 100) {
@@ -164,6 +206,7 @@ void logic_tick(SystemState *state, LogicEvents *events) {
             state->slots[i].energy_kwh = state->slots[i].target_energy_kwh * (state->slots[i].progress / 100.0);
 
             if (state->slots[i].progress >= 100) {
+                memset(&rec, 0, sizeof(rec));
                 rec.slot_id = state->slots[i].slot_id;
                 strncpy(rec.vehicle_id, state->slots[i].vehicle.vehicle_id, sizeof(rec.vehicle_id) - 1);
                 strncpy(rec.owner, state->slots[i].vehicle.owner, sizeof(rec.owner) - 1);
@@ -174,8 +217,12 @@ void logic_tick(SystemState *state, LogicEvents *events) {
                 state->total_sessions++;
                 storage_append_session(SESSIONS_FILE, &rec);
 
-                snprintf(msg, sizeof(msg), "Charging complete for %s (Bill: %.2f).",
-                         rec.vehicle_id, rec.bill);
+                snprintf(msg,
+                         sizeof(msg),
+                         "Complete %s: %.2f kWh, Bill %.2f",
+                         rec.vehicle_id,
+                         rec.energy_kwh,
+                         rec.bill);
                 add_event(events, msg);
 
                 state->slots[i].status = SLOT_AVAILABLE;
@@ -209,4 +256,23 @@ int logic_active_sessions(const SystemState *state) {
     }
 
     return count;
+}
+
+double logic_calculate_energy_request(int battery_start_pct, int battery_target_pct, double battery_capacity_kwh) {
+    double delta = (double)(battery_target_pct - battery_start_pct) / 100.0;
+    return battery_capacity_kwh * delta;
+}
+
+double logic_calculate_estimated_bill(double requested_energy_kwh) {
+    return billing_calculate(requested_energy_kwh, RATE_PER_KWH);
+}
+
+int logic_calculate_estimated_minutes(double requested_energy_kwh) {
+    const double station_power_kw = 22.0;
+    double hours = requested_energy_kwh / station_power_kw;
+    int minutes = (int)(hours * 60.0);
+    if (minutes < 5) {
+        minutes = 5;
+    }
+    return minutes;
 }
