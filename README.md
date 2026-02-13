@@ -93,3 +93,18 @@ In `build\` folder:
 If your branch still references old root file paths (`main.c`, `billing.c`, `billing.h`),
 these are now compatibility shims that point to canonical files in `app/src` and `app/include`.
 Use the `app/` paths as source of truth.
+
+## Realistic charging fields in UI
+
+Queue screen now captures:
+- Vehicle Number
+- Battery Now %%
+- Target %%
+- Battery Capacity (kWh)
+
+App shows:
+- Estimated Energy (kWh)
+- Estimated Bill
+- Estimated Time
+- Live graph panel for slot progress
+

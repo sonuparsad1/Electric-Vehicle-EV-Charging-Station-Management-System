@@ -9,6 +9,10 @@
 typedef struct {
     char owner[64];
     char vehicle_id[32];
+    int battery_start_pct;
+    int battery_target_pct;
+    double battery_capacity_kwh;
+    double requested_energy_kwh;
 } Vehicle;
 
 typedef struct {
@@ -50,16 +54,26 @@ typedef struct {
 } SystemState;
 
 typedef struct {
-    char messages[16][160];
+    char messages[16][180];
     int count;
 } LogicEvents;
 
 void logic_init(SystemState *state);
 int logic_authenticate(const char *username, const char *password);
 int logic_register_vehicle(SystemState *state, const char *owner, const char *vehicle_id, char *err, int err_len);
-int logic_enqueue_vehicle(SystemState *state, const char *vehicle_id, char *err, int err_len);
+int logic_enqueue_vehicle(SystemState *state,
+                         const char *vehicle_id,
+                         int battery_start_pct,
+                         int battery_target_pct,
+                         double battery_capacity_kwh,
+                         char *err,
+                         int err_len);
 void logic_tick(SystemState *state, LogicEvents *events);
 int logic_generate_report(SystemState *state, char *err, int err_len);
 int logic_active_sessions(const SystemState *state);
+
+double logic_calculate_energy_request(int battery_start_pct, int battery_target_pct, double battery_capacity_kwh);
+double logic_calculate_estimated_bill(double requested_energy_kwh);
+int logic_calculate_estimated_minutes(double requested_energy_kwh);
 
 #endif
