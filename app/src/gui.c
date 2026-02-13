@@ -350,19 +350,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             hTotalRevenue = CreateWindowA("STATIC", "Total Revenue: 0", WS_CHILD, 410, 120, 240, 22, hwnd, (HMENU)ID_STAT_REVENUE, NULL, NULL);
 
             for (i = 0; i < SLOT_COUNT; i++) {
-                hSlotStatus[i] = CreateWindowA("STATIC", "", WS_CHILD, 410, 155 + i * 70, 330, 24, hwnd, (HMENU)(INT_PTR)(ID_SLOT_STATUS_BASE + i), NULL, NULL);
-                hSlotProgress[i] = CreateWindowExA(0,
-                                                   PROGRESS_CLASSA,
-                                                   "",
-                                                   WS_CHILD,
-                                                   410,
-                                                   180 + i * 70,
-                                                   330,
-                                                   22,
-                                                   hwnd,
-                                                   (HMENU)(INT_PTR)(ID_SLOT_PROGRESS_BASE + i),
-                                                   NULL,
-                                                   NULL);
+                hSlotStatus[i] = CreateWindowA("STATIC", "", WS_CHILD, 410, 145 + i * 35, 220, 22, hwnd, (HMENU)(INT_PTR)(ID_SLOT_STATUS_BASE + i), NULL, NULL);
+                hSlotProgress[i] = CreateWindowExA(0, PROGRESS_CLASSA, "", WS_CHILD, 630, 145 + i * 35, 120, 20,
+                                                   hwnd, (HMENU)(INT_PTR)(ID_SLOT_PROGRESS_BASE + i), NULL, NULL);
                 SendMessageA(hSlotProgress[i], PBM_SETRANGE, 0, MAKELPARAM(0, 100));
             }
 
