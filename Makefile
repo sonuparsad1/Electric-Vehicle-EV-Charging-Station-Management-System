@@ -1,28 +1,20 @@
-CC=gcc
-CFLAGS=-Wall -Wextra -std=c11 -pthread -Iinclude
+APP=EVChargingApp.exe
+SRC=app/src/main.c app/src/gui.c app/src/logic.c app/src/storage.c app/src/billing.c
+INC=-Iapp/include
 
-SRC_DIR=src
-OBJ_DIR=build
+all:
+	@echo "Use Windows MinGW to build GUI app:"
+	@echo "gcc $(SRC) $(INC) -o build/$(APP) -mwindows -lcomctl32"
 
-SRC=$(SRC_DIR)/main.c $(SRC_DIR)/auth.c $(SRC_DIR)/vehicle.c $(SRC_DIR)/queue.c $(SRC_DIR)/charger.c $(SRC_DIR)/billing.c $(SRC_DIR)/dashboard.c $(SRC_DIR)/report.c $(SRC_DIR)/logger.c
-OBJ=$(SRC:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
-TARGET=ev_station
+windows-build:
+	mkdir -p build
+	gcc $(SRC) $(INC) -o build/$(APP) -mwindows -lcomctl32
 
-all: $(TARGET)
-
-$(TARGET): $(OBJ)
-	$(CC) $(CFLAGS) -o $@ $(OBJ)
-
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(OBJ_DIR):
-	mkdir -p $(OBJ_DIR)
+windows-build-fallback:
+	mkdir -p build
+	gcc $(SRC) $(INC) -o build/$(APP) -mwindows
 
 clean:
-	rm -rf $(OBJ_DIR) $(TARGET)
+	rm -rf build dist
 
-run: $(TARGET)
-	./$(TARGET)
-
-.PHONY: all clean run
+.PHONY: all windows-build windows-build-fallback clean
