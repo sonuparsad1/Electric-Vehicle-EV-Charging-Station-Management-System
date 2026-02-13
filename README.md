@@ -30,6 +30,16 @@ Professional Windows desktop GUI app written in pure C using WinAPI.
 
 ---
 
+## Repository organization
+
+For a clean repo map, see: `docs/REPO_STRUCTURE.md`.
+
+- Active code: `app/src`, `app/include`
+- Scripts: `scripts/` + root one-click wrappers
+- Legacy archived code: `legacy/`
+
+---
+
 ## One-click (Create App)
 
 1. Download ZIP from GitHub (**Code -> Download ZIP**).
