@@ -75,5 +75,6 @@ int logic_active_sessions(const SystemState *state);
 double logic_calculate_energy_request(int battery_start_pct, int battery_target_pct, double battery_capacity_kwh);
 double logic_calculate_estimated_bill(double requested_energy_kwh);
 int logic_calculate_estimated_minutes(double requested_energy_kwh);
+double logic_calculate_average_bill(const SystemState *state);
 
 #endif

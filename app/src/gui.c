@@ -26,11 +26,14 @@
 #define ID_BATT_START_EDIT 208
 #define ID_BATT_TARGET_EDIT 209
 #define ID_BATT_CAP_EDIT 210
+#define ID_USE_SELECTED_BTN 211
 
 #define ID_STAT_TOTAL_VEHICLES 300
 #define ID_STAT_ACTIVE 301
 #define ID_STAT_REVENUE 302
 #define ID_STAT_QUEUE 303
+#define ID_STAT_SESSIONS 304
+#define ID_STAT_AVG_BILL 305
 
 #define ID_EST_ENERGY 310
 #define ID_EST_BILL 311
@@ -41,12 +44,17 @@
 
 static SystemState g_state;
 static int g_login_attempts = 0;
+static double g_prev_revenue = 0.0;
+static int g_prev_sessions = 0;
+static double g_recent_bills[24];
+static int g_recent_bill_count = 0;
 
+static HWND hLoginUserLbl, hLoginPassLbl;
 static HWND hUser, hPass, hLoginBtn;
 static HWND hOwner, hVehicleId, hRegisterBtn, hQueueId, hQueueBtn, hReportBtn;
-static HWND hBattStart, hBattTarget, hBattCap;
+static HWND hBattStart, hBattTarget, hBattCap, hUseSelectedBtn;
 static HWND hVehicleList, hLog;
-static HWND hTotalVehicles, hActiveSessions, hTotalRevenue, hQueueSize;
+static HWND hTotalVehicles, hActiveSessions, hTotalRevenue, hQueueSize, hTotalSessions, hAvgBill;
 static HWND hEstEnergy, hEstBill, hEstTime;
 static HWND hSlotStatus[SLOT_COUNT], hSlotProgress[SLOT_COUNT];
 
@@ -57,50 +65,81 @@ static void append_log(const char *msg) {
     SendMessageA(hLog, EM_REPLACESEL, FALSE, (LPARAM)"\r\n");
 }
 
-static void draw_graph_panel(HWND hwnd, HDC hdc) {
-    RECT rc;
+static void push_recent_bill(double bill) {
     int i;
-    int gx;
-    int gy;
-    int gw;
-    int gh;
+    if (g_recent_bill_count < 24) {
+        g_recent_bills[g_recent_bill_count++] = bill;
+        return;
+    }
 
-    GetClientRect(hwnd, &rc);
-    gx = 760;
-    gy = 30;
-    gw = 310;
-    gh = 360;
+    for (i = 1; i < 24; i++) {
+        g_recent_bills[i - 1] = g_recent_bills[i];
+    }
+    g_recent_bills[23] = bill;
+}
+
+static void draw_graph_panel(HWND hwnd, HDC hdc) {
+    int i;
+    int gx = 760;
+    int gy = 20;
+    int gw = 390;
+    int gh = 370;
 
     Rectangle(hdc, gx, gy, gx + gw, gy + gh);
-    TextOutA(hdc, gx + 10, gy + 10, "Live Charging Graph", 18);
+    TextOutA(hdc, gx + 10, gy + 8, "Live Station Analytics", 22);
 
-    MoveToEx(hdc, gx + 30, gy + gh - 40, NULL);
-    LineTo(hdc, gx + gw - 20, gy + gh - 40);
-    MoveToEx(hdc, gx + 30, gy + 40, NULL);
-    LineTo(hdc, gx + 30, gy + gh - 40);
-
+    Rectangle(hdc, gx + 15, gy + 35, gx + 185, gy + 180);
+    TextOutA(hdc, gx + 20, gy + 40, "Slot Load", 9);
     for (i = 0; i < SLOT_COUNT; i++) {
-        int barX = gx + 60 + i * 80;
-        int baseY = gy + gh - 40;
-        int barH = (g_state.slots[i].progress * 220) / 100;
-        RECT bar = {barX, baseY - barH, barX + 45, baseY};
-        HBRUSH brush = CreateSolidBrush(g_state.slots[i].status == SLOT_CHARGING ? RGB(0, 180, 0) : RGB(180, 180, 180));
-        char label[32];
-        char pct[16];
-
+        int barX = gx + 28 + i * 50;
+        int baseY = gy + 165;
+        int barH = (g_state.slots[i].progress * 95) / 100;
+        RECT bar = {barX, baseY - barH, barX + 26, baseY};
+        HBRUSH brush = CreateSolidBrush(g_state.slots[i].status == SLOT_CHARGING ? RGB(40, 170, 40) : RGB(160, 160, 160));
+        char lbl[8];
         FillRect(hdc, &bar, brush);
         DeleteObject(brush);
-
-        snprintf(label, sizeof(label), "S%d", i + 1);
-        snprintf(pct, sizeof(pct), "%d%%", g_state.slots[i].progress);
-
-        TextOutA(hdc, barX + 12, baseY + 5, label, (int)strlen(label));
-        TextOutA(hdc, barX + 8, baseY - barH - 18, pct, (int)strlen(pct));
+        snprintf(lbl, sizeof(lbl), "S%d", i + 1);
+        TextOutA(hdc, barX + 6, baseY + 2, lbl, (int)strlen(lbl));
     }
+
+    Rectangle(hdc, gx + 205, gy + 35, gx + gw - 15, gy + 180);
+    TextOutA(hdc, gx + 210, gy + 40, "Recent Bills", 11);
+    if (g_recent_bill_count > 1) {
+        double maxBill = 1.0;
+        int px = gx + 220;
+        int py = gy + 160;
+        for (i = 0; i < g_recent_bill_count; i++) {
+            int x;
+            int y;
+            if (g_recent_bills[i] > maxBill) {
+                maxBill = g_recent_bills[i];
+            }
+        }
+        for (i = 0; i < g_recent_bill_count; i++) {
+            int x = gx + 220 + (i * ((gw - 55) / (g_recent_bill_count - 1)));
+            int y = gy + 160 - (int)((g_recent_bills[i] / maxBill) * 95.0);
+            if (i > 0) {
+                MoveToEx(hdc, px, py, NULL);
+                LineTo(hdc, x, y);
+            }
+            px = x;
+            py = y;
+        }
+    }
+
+    Rectangle(hdc, gx + 15, gy + 200, gx + gw - 15, gy + gh - 15);
+    TextOutA(hdc, gx + 20, gy + 205, "Battery Inputs Power the Real-time Estimation", 42);
+    TextOutA(hdc, gx + 20, gy + 230, "- Vehicle Number", 16);
+    TextOutA(hdc, gx + 20, gy + 248, "- Current Battery %", 19);
+    TextOutA(hdc, gx + 20, gy + 266, "- Target Battery %", 18);
+    TextOutA(hdc, gx + 20, gy + 284, "- Battery Capacity (kWh)", 24);
 }
 
 static void show_login(BOOL show) {
     int cmd = show ? SW_SHOW : SW_HIDE;
+    ShowWindow(hLoginUserLbl, cmd);
+    ShowWindow(hLoginPassLbl, cmd);
     ShowWindow(hUser, cmd);
     ShowWindow(hPass, cmd);
     ShowWindow(hLoginBtn, cmd);
@@ -117,7 +156,7 @@ static void refresh_vehicle_list(void) {
 }
 
 static void refresh_dashboard(HWND hwnd) {
-    char buf[128];
+    char buf[160];
     int i;
 
     snprintf(buf, sizeof(buf), "Total Vehicles: %d", g_state.vehicle_count);
@@ -128,6 +167,12 @@ static void refresh_dashboard(HWND hwnd) {
 
     snprintf(buf, sizeof(buf), "Queue Size: %d", g_state.queue.count);
     SetWindowTextA(hQueueSize, buf);
+
+    snprintf(buf, sizeof(buf), "Total Sessions: %d", g_state.total_sessions);
+    SetWindowTextA(hTotalSessions, buf);
+
+    snprintf(buf, sizeof(buf), "Average Bill: %.2f", logic_calculate_average_bill(&g_state));
+    SetWindowTextA(hAvgBill, buf);
 
     snprintf(buf, sizeof(buf), "Total Revenue: %.2f", g_state.total_revenue);
     SetWindowTextA(hTotalRevenue, buf);
@@ -165,12 +210,15 @@ static void show_dashboard(BOOL show) {
     ShowWindow(hBattStart, cmd);
     ShowWindow(hBattTarget, cmd);
     ShowWindow(hBattCap, cmd);
+    ShowWindow(hUseSelectedBtn, cmd);
     ShowWindow(hVehicleList, cmd);
     ShowWindow(hLog, cmd);
     ShowWindow(hTotalVehicles, cmd);
     ShowWindow(hActiveSessions, cmd);
     ShowWindow(hTotalRevenue, cmd);
     ShowWindow(hQueueSize, cmd);
+    ShowWindow(hTotalSessions, cmd);
+    ShowWindow(hAvgBill, cmd);
     ShowWindow(hEstEnergy, cmd);
     ShowWindow(hEstBill, cmd);
     ShowWindow(hEstTime, cmd);
@@ -252,6 +300,22 @@ static void update_estimation_labels(void) {
     SetWindowTextA(hEstTime, line);
 }
 
+static void handle_use_selected_vehicle(void) {
+    int sel = (int)SendMessageA(hVehicleList, LB_GETCURSEL, 0, 0);
+    if (sel != LB_ERR) {
+        char line[128];
+        char *open;
+        char *close;
+        SendMessageA(hVehicleList, LB_GETTEXT, (WPARAM)sel, (LPARAM)line);
+        open = strchr(line, '(');
+        close = strchr(line, ')');
+        if (open && close && close > open + 1) {
+            *close = '\0';
+            SetWindowTextA(hQueueId, open + 1);
+        }
+    }
+}
+
 static void handle_enqueue(HWND hwnd) {
     char id[32], err[128];
     char sStart[16], sTarget[16], sCap[16];
@@ -310,23 +374,25 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             int i;
 
             logic_init(&g_state);
+            g_prev_revenue = g_state.total_revenue;
+            g_prev_sessions = g_state.total_sessions;
 
-            CreateWindowA("STATIC", "Username", WS_CHILD | WS_VISIBLE, 50, 60, 120, 24, hwnd, NULL, NULL, NULL);
+            hLoginUserLbl = CreateWindowA("STATIC", "Username", WS_CHILD | WS_VISIBLE, 50, 60, 120, 24, hwnd, NULL, NULL, NULL);
             hUser = CreateWindowA("EDIT", "", WS_CHILD | WS_VISIBLE | WS_BORDER, 170, 60, 240, 24, hwnd, (HMENU)ID_LOGIN_USER, NULL, NULL);
 
-            CreateWindowA("STATIC", "Password", WS_CHILD | WS_VISIBLE, 50, 100, 120, 24, hwnd, NULL, NULL, NULL);
+            hLoginPassLbl = CreateWindowA("STATIC", "Password", WS_CHILD | WS_VISIBLE, 50, 100, 120, 24, hwnd, NULL, NULL, NULL);
             hPass = CreateWindowA("EDIT", "", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_PASSWORD, 170, 100, 240, 24, hwnd, (HMENU)ID_LOGIN_PASS, NULL, NULL);
 
             hLoginBtn = CreateWindowA("BUTTON", "Login", WS_CHILD | WS_VISIBLE, 170, 140, 120, 32, hwnd, (HMENU)ID_LOGIN_BTN, NULL, NULL);
 
             CreateWindowA("BUTTON", "Vehicle Registration", WS_CHILD | BS_GROUPBOX, 20, 20, 360, 130, hwnd, NULL, NULL, NULL);
-            CreateWindowA("STATIC", "Owner", WS_CHILD, 35, 50, 70, 22, hwnd, NULL, NULL, NULL);
-            hOwner = CreateWindowA("EDIT", "", WS_CHILD | WS_BORDER, 110, 50, 220, 24, hwnd, (HMENU)ID_OWNER_EDIT, NULL, NULL);
+            CreateWindowA("STATIC", "Owner Name", WS_CHILD, 35, 50, 80, 22, hwnd, NULL, NULL, NULL);
+            hOwner = CreateWindowA("EDIT", "", WS_CHILD | WS_BORDER, 120, 50, 210, 24, hwnd, (HMENU)ID_OWNER_EDIT, NULL, NULL);
             CreateWindowA("STATIC", "Vehicle Number", WS_CHILD, 35, 83, 90, 22, hwnd, NULL, NULL, NULL);
             hVehicleId = CreateWindowA("EDIT", "", WS_CHILD | WS_BORDER, 130, 82, 130, 24, hwnd, (HMENU)ID_VEHICLE_EDIT, NULL, NULL);
             hRegisterBtn = CreateWindowA("BUTTON", "Register", WS_CHILD, 270, 82, 70, 24, hwnd, (HMENU)ID_REGISTER_BTN, NULL, NULL);
 
-            CreateWindowA("BUTTON", "Charging Request / Queue", WS_CHILD | BS_GROUPBOX, 20, 160, 360, 220, hwnd, NULL, NULL, NULL);
+            CreateWindowA("BUTTON", "Charging Request / Queue", WS_CHILD | BS_GROUPBOX, 20, 160, 360, 240, hwnd, NULL, NULL, NULL);
             CreateWindowA("STATIC", "Vehicle Number", WS_CHILD, 35, 190, 95, 22, hwnd, NULL, NULL, NULL);
             hQueueId = CreateWindowA("EDIT", "", WS_CHILD | WS_BORDER, 140, 190, 190, 24, hwnd, (HMENU)ID_QUEUE_ID_EDIT, NULL, NULL);
             CreateWindowA("STATIC", "Battery Now %", WS_CHILD, 35, 220, 95, 22, hwnd, NULL, NULL, NULL);
@@ -340,25 +406,28 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             hEstBill = CreateWindowA("STATIC", "Estimated Bill: 0", WS_CHILD, 35, 305, 290, 20, hwnd, (HMENU)ID_EST_BILL, NULL, NULL);
             hEstTime = CreateWindowA("STATIC", "Estimated Time: 0", WS_CHILD, 35, 327, 290, 20, hwnd, (HMENU)ID_EST_TIME, NULL, NULL);
 
-            hQueueBtn = CreateWindowA("BUTTON", "Add to Queue", WS_CHILD, 140, 350, 95, 24, hwnd, (HMENU)ID_QUEUE_BTN, NULL, NULL);
-            hReportBtn = CreateWindowA("BUTTON", "Generate Report", WS_CHILD, 245, 350, 95, 24, hwnd, (HMENU)ID_REPORT_BTN, NULL, NULL);
+            hQueueBtn = CreateWindowA("BUTTON", "Add to Queue", WS_CHILD, 35, 355, 95, 26, hwnd, (HMENU)ID_QUEUE_BTN, NULL, NULL);
+            hUseSelectedBtn = CreateWindowA("BUTTON", "Use Selected Vehicle", WS_CHILD, 140, 355, 120, 26, hwnd, (HMENU)ID_USE_SELECTED_BTN, NULL, NULL);
+            hReportBtn = CreateWindowA("BUTTON", "Generate Report", WS_CHILD, 270, 355, 80, 26, hwnd, (HMENU)ID_REPORT_BTN, NULL, NULL);
 
-            CreateWindowA("BUTTON", "Dashboard", WS_CHILD | BS_GROUPBOX, 390, 20, 360, 370, hwnd, NULL, NULL, NULL);
-            hTotalVehicles = CreateWindowA("STATIC", "Total Vehicles: 0", WS_CHILD, 410, 48, 220, 22, hwnd, (HMENU)ID_STAT_TOTAL_VEHICLES, NULL, NULL);
-            hActiveSessions = CreateWindowA("STATIC", "Active Sessions: 0", WS_CHILD, 410, 72, 220, 22, hwnd, (HMENU)ID_STAT_ACTIVE, NULL, NULL);
-            hQueueSize = CreateWindowA("STATIC", "Queue Size: 0", WS_CHILD, 410, 96, 220, 22, hwnd, (HMENU)ID_STAT_QUEUE, NULL, NULL);
-            hTotalRevenue = CreateWindowA("STATIC", "Total Revenue: 0", WS_CHILD, 410, 120, 240, 22, hwnd, (HMENU)ID_STAT_REVENUE, NULL, NULL);
+            CreateWindowA("BUTTON", "Dashboard", WS_CHILD | BS_GROUPBOX, 390, 20, 360, 380, hwnd, NULL, NULL, NULL);
+            hTotalVehicles = CreateWindowA("STATIC", "Total Vehicles: 0", WS_CHILD, 410, 45, 220, 22, hwnd, (HMENU)ID_STAT_TOTAL_VEHICLES, NULL, NULL);
+            hActiveSessions = CreateWindowA("STATIC", "Active Sessions: 0", WS_CHILD, 410, 68, 220, 22, hwnd, (HMENU)ID_STAT_ACTIVE, NULL, NULL);
+            hQueueSize = CreateWindowA("STATIC", "Queue Size: 0", WS_CHILD, 410, 91, 220, 22, hwnd, (HMENU)ID_STAT_QUEUE, NULL, NULL);
+            hTotalSessions = CreateWindowA("STATIC", "Total Sessions: 0", WS_CHILD, 410, 114, 220, 22, hwnd, (HMENU)ID_STAT_SESSIONS, NULL, NULL);
+            hAvgBill = CreateWindowA("STATIC", "Average Bill: 0", WS_CHILD, 410, 137, 220, 22, hwnd, (HMENU)ID_STAT_AVG_BILL, NULL, NULL);
+            hTotalRevenue = CreateWindowA("STATIC", "Total Revenue: 0", WS_CHILD, 410, 160, 240, 22, hwnd, (HMENU)ID_STAT_REVENUE, NULL, NULL);
 
             for (i = 0; i < SLOT_COUNT; i++) {
-                hSlotStatus[i] = CreateWindowA("STATIC", "", WS_CHILD, 410, 155 + i * 70, 330, 24, hwnd, (HMENU)(INT_PTR)(ID_SLOT_STATUS_BASE + i), NULL, NULL);
+                hSlotStatus[i] = CreateWindowA("STATIC", "", WS_CHILD, 410, 190 + i * 62, 330, 24, hwnd, (HMENU)(INT_PTR)(ID_SLOT_STATUS_BASE + i), NULL, NULL);
                 hSlotProgress[i] = CreateWindowExA(0,
                                                    PROGRESS_CLASSA,
                                                    "",
                                                    WS_CHILD,
                                                    410,
-                                                   180 + i * 70,
+                                                   214 + i * 62,
                                                    330,
-                                                   22,
+                                                   20,
                                                    hwnd,
                                                    (HMENU)(INT_PTR)(ID_SLOT_PROGRESS_BASE + i),
                                                    NULL,
@@ -366,13 +435,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 SendMessageA(hSlotProgress[i], PBM_SETRANGE, 0, MAKELPARAM(0, 100));
             }
 
-            CreateWindowA("BUTTON", "Registered Vehicles", WS_CHILD | BS_GROUPBOX, 20, 390, 360, 260, hwnd, NULL, NULL, NULL);
-            hVehicleList = CreateWindowA("LISTBOX", "", WS_CHILD | WS_BORDER | LBS_NOTIFY, 35, 420, 330, 215,
+            CreateWindowA("BUTTON", "Registered Vehicles", WS_CHILD | BS_GROUPBOX, 20, 410, 360, 250, hwnd, NULL, NULL, NULL);
+            hVehicleList = CreateWindowA("LISTBOX", "", WS_CHILD | WS_BORDER | LBS_NOTIFY, 35, 438, 330, 205,
                                          hwnd, (HMENU)ID_VEHICLE_LIST, NULL, NULL);
 
-            CreateWindowA("BUTTON", "System Log", WS_CHILD | BS_GROUPBOX, 390, 400, 680, 250, hwnd, NULL, NULL, NULL);
+            CreateWindowA("BUTTON", "System Log", WS_CHILD | BS_GROUPBOX, 390, 410, 760, 250, hwnd, NULL, NULL, NULL);
             hLog = CreateWindowA("EDIT", "", WS_CHILD | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL | ES_READONLY,
-                                 405, 430, 650, 205, hwnd, (HMENU)ID_LOG_EDIT, NULL, NULL);
+                                 405, 438, 730, 205, hwnd, (HMENU)ID_LOG_EDIT, NULL, NULL);
 
             show_dashboard(FALSE);
             update_estimation_labels();
@@ -394,6 +463,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 case ID_REPORT_BTN:
                     handle_generate_report(hwnd);
                     break;
+                case ID_USE_SELECTED_BTN:
+                    handle_use_selected_vehicle();
+                    break;
                 case ID_BATT_START_EDIT:
                 case ID_BATT_TARGET_EDIT:
                 case ID_BATT_CAP_EDIT:
@@ -412,6 +484,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 for (i = 0; i < events.count; i++) {
                     append_log(events.messages[i]);
                 }
+
+                if (g_state.total_sessions > g_prev_sessions) {
+                    push_recent_bill(g_state.total_revenue - g_prev_revenue);
+                    g_prev_revenue = g_state.total_revenue;
+                    g_prev_sessions = g_state.total_sessions;
+                }
+
                 refresh_dashboard(hwnd);
             }
             return 0;
@@ -455,8 +534,8 @@ int gui_run(HINSTANCE hInstance, int nCmdShow) {
         WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
-        1110,
-        720,
+        1180,
+        740,
         NULL,
         NULL,
         hInstance,

@@ -118,3 +118,7 @@ App shows:
 - Estimated Time
 - Live graph panel for slot progress
 
+- Queue auto-fill from selected registered vehicle
+- Dashboard KPIs: Total Sessions and Average Bill
+- Analytics panel: slot load bars + recent bill trend graph
+

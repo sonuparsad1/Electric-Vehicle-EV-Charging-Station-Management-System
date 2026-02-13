@@ -276,3 +276,11 @@ int logic_calculate_estimated_minutes(double requested_energy_kwh) {
     }
     return minutes;
 }
+
+
+double logic_calculate_average_bill(const SystemState *state) {
+    if (!state || state->total_sessions <= 0) {
+        return 0.0;
+    }
+    return state->total_revenue / state->total_sessions;
+}
