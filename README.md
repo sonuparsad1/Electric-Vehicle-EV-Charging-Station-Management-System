@@ -8,6 +8,24 @@ A desktop **Windows GUI** application written in pure C using the WinAPI.
 - MinGW (GCC for Windows) or Code::Blocks with MinGW compiler
 - No internet required at runtime (offline app)
 
+## Quickest one-click way (recommended)
+
+1. Download project ZIP from GitHub (**Code -> Download ZIP**).
+2. Extract it anywhere on your Windows laptop.
+3. Double-click **`OneClick-Build-Run.bat`**.
+
+This script will:
+- Build `EVChargingApp.exe` automatically
+- Create runtime files (`vehicles.txt`, `sessions.txt`)
+- Create portable folder `EVChargingApp_Portable`
+- Launch the app
+
+To create a shareable ZIP package in one click, run:
+- **`Create-Portable-Package.bat`**
+
+It generates:
+- `EVChargingApp_Portable.zip`
+
 ## 1) Download the project
 
 ### Option A: Download ZIP from GitHub
