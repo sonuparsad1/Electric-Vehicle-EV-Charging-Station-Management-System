@@ -26,6 +26,29 @@ To create a shareable ZIP package in one click, run:
 It generates:
 - `EVChargingApp_Portable.zip`
 
+
+## Super simple: create app + download/use
+
+If you are asking **"how to create app and download"**, do this:
+
+### A) Create the app (.exe) on your Windows laptop
+1. Download ZIP from GitHub (Code -> Download ZIP).
+2. Extract ZIP.
+3. Double-click **`OneClick-Build-Run.bat`**.
+4. Wait for build to finish.
+5. Your app file is: **`EVChargingApp.exe`**.
+
+### B) Create one file you can share/download later
+1. Double-click **`Create-Portable-Package.bat`**.
+2. It creates: **`EVChargingApp_Portable.zip`**.
+3. Upload that ZIP to Google Drive / OneDrive / GitHub Release.
+4. Anyone can download the ZIP, extract it, and run `EVChargingApp.exe`.
+
+### C) If GCC error appears
+- Install MinGW (with GCC).
+- Add MinGW `bin` folder to Windows PATH.
+- Re-open terminal and run `OneClick-Build-Run.bat` again.
+
 ## 1) Download the project
 
 ### Option A: Download ZIP from GitHub
